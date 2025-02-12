@@ -1,0 +1,78 @@
+/*-- scss:defaults --*/
+// Colors
+$dark: #333333;
+$highlight: #900C3F;
+$off-white: #F7F7F7; 
+$code: #900C3F;
+$link: #900C3F;
+
+// scss variables
+
+/// Headings 
+$presentation-heading-color: $dark;
+
+$link-color: $code;
+$code-block-bg: $off-white;
+$code-color: $code;
+$code-bg: $off-white;
+
+// Fonts
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&display=swap');
+
+$font-family-sans-serif: 'Manrope', sans-serif;
+$presentation-heading-font: 'IBM Plex Serif', serif;
+$presentation-title-slide-text-align: "left";
+
+/// Font Size
+$presentation-font-size-root: 28px;
+/*-- scss:rules --*/
+
+.reveal .slide blockquote {
+  border-left: 3px solid $text-muted;
+  padding-left: 0.5em;
+}
+
+.quarto-title-author-name {
+  font-size: 30px;
+}
+
+.focus {
+  color: $highlight;
+  font-weight: bold;
+}
+
+.subtitle {
+  font-size: 50px;
+}
+.quarto-title-author-name {
+  font-size: 30px;
+}
+
+h1.title {
+  font-size: 100px;
+  background-image: url(https://arrow.apache.org/img/arrow-logo_hex_black-txt_white-bg.png);
+  background-repeat: no-repeat;
+  background-position: right;
+  background-size: 100px;
+}
+
+.source{
+  color: $dark;
+  bottom: 0px;
+  text-align: center;
+  font-size: 10px;
+  font-family: 'IBM Plex Serif';
+}
+
+code.sourceCode {
+  font-size: 1.3em;
+  /* or try font-size: xx-large; */
+}
+
+.v-center-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 90%;
+}
