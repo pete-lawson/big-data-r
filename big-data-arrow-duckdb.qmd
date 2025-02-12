@@ -1,0 +1,781 @@
+---
+title: "Big Data in R"
+subtitle: "Larger-than-Memory Data Analysis with Arrow and DuckDB"
+author: "[Pete Lawson]{.focus} | Data and Visualization Librarian"
+footer: " Johns Hopkins Libraries {{< fa heart >}} Love Data Week" 
+from: markdown+emoji 
+execute:
+  echo: true
+format:
+  revealjs: 
+    theme: [default, custom.scss]
+    center: true
+engine: knitr
+editor: source
+---
+
+## What makes big data [BIG]{.focus}? {.center}
+
+::: incremental
+-   Tabular data often hundreds to thousands of rows.
+
+-   The maximum number of row in an Excel worksheet is **1,048,576**.
+
+-   Data can easily be **> 100 million** rows.
+
+:::
+
+## A definition ... [sort of]{.focus} {.center}
+
+::: incremental
+1.  Data that is too large to fit into memory.
+
+- e.g. a 40 GB `.csv` but only 16 GB RAM.
+- A rule of thumb: *your memory should be twice the size of your data*.
+
+2.  Data that fits into memory but is prohibitively slow to analyze.
+:::
+
+## Apache Arrow 
+
+
+:::: {.columns .center}
+
+
+::: {.column width="50%"}
+> Apache Arrow is a universal columnar format and multi-language toolbox for fast data interchange and in-memory analytics.
+
+::: incremental
+- Columnar is Fast!
+- Arrow keeps data in a single format that can be accessed by multiple programming languages and platforms without having to copy and convert the data.
+- Arrow works with multiple programming languages, including `C++`, `C#`, `Go`, `Java,` `Julia`, `Python`, and of course `R`.
+::: 
+:::
+
+
+::: {.column width="50%"}
+![](images/arrow-white.png)
+:::
+
+::::
+
+---
+
+::::: {.columns style='display: flex !important; height: 90%;'}
+
+::: {.column width="50%" style='display: flex; justify-content: center; align-items: center;'}
+
+![[Row-Oriented]{.focus}](images/row.png)
+
+:::
+
+::: {.column width="50%" style='display: flex; justify-content: center; align-items: center;'}
+
+![[Columnar]{.focus}](images/column.png)
+:::
+
+::::
+
+
+
+
+
+## Row in Memory
+
+
+::::: {.columns style='display: flex !important; height: 90%;'}
+
+::: {.column width="50%" style='display: flex; justify-content: center; align-items: center;'}
+
+![](images/row-column.png)
+:::
+
+::: {.column width="50%" style='display: flex; justify-content: center; align-items: center;'}
+![](images/row-memory-buffer.png){height=550}
+:::
+
+::::
+
+## Columnar in Memory
+
+
+::::: {.columns style='display: flex !important; height: 90%;'}
+
+::: {.column width="50%" style='display: flex; justify-content: center; align-items: center;'}
+![](images/row-column.png)
+:::
+
+::: {.column width="50%" style='display: flex; justify-content: center; align-items: center;'}
+![](images/column-memory-buffer.png){height=550}
+:::
+
+::::
+
+--- 
+
+
+:::: {.columns}
+
+::: {.column width="40%"}
+
+> Convert all cat counts to millions
+
+::: {.fragment}
+```{r}
+#| eval: false
+cats |> 
+  mutate(count_million = Count * 1000000)
+```
+:::
+
+:::
+
+::: {.column width="60%"}
+
+![](images/simd.png){height=550}
+:::
+
+::::
+
+
+--- 
+
+::::: columns
+::: {.column width="50%"}
+### [Row]{.focus}
+
+-   Heterogeneous Data Types
+-   Better for transactional processing (Databases)
+:::
+
+::: {.column width="50%"}
+### [Column]{.focus}
+
+-   Homogeneous Data Types
+-   Compressible
+-   Single Instruction Multiple Data (SIMD) Capable 
+:::
+:::::
+
+## Installing `{arrow}`
+
+- Install arrow by typing `install.packages("arrow")`
+- To use dplyr pipelines both arrow and dplyr must be loaded 
+
+```{r}
+library(arrow)
+library(dplyr)
+```
+
+## Lets explore some [big]{.focus} data
+
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+- [data.seattle.gov](https://data.seattle.gov/Community-and-Culture/Checkouts-by-Title/tmmm-ytt6/about_data): Seattle Public Library checkouts by title for physical and electronic items. 
+- Monthly count of library checkouts since April 2005.
+- 46.9 million rows as of Feb 6th, 2025. 
+- `seattle-library-checkouts.csv`: 10.7 GB .csv file
+:::
+
+::: {.column width="50%"}
+![](images/seattle-library.jpeg)
+:::
+::::
+::: footer
+Seattle Central Public Library Image: <https://www.spl.org/hours-and-locations/central-library/central-library-highlights/central-library-architecture>
+:::
+
+## Dataset Contents 
+
+```{css}
+#| echo: false
+
+.reveal table {
+  font-size: small;
+}
+
+```
+```{r}
+#| eval: true
+#| echo: false
+
+library(arrow)
+library(dplyr)
+library(kableExtra)
+seattle_checkouts <- open_dataset(
+  sources = "data/seattle-library/seattle-library-checkouts.csv",
+  format = "csv"
+)
+
+checkouts_head <- seattle_checkouts |>
+  filter(CheckoutYear == 2018) |> 
+  head(n = 8) |>
+  collect()
+
+checkouts_head |> 
+  kbl() %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+## Load [csv]{.focus} data into Arrow
+
+```{r}
+seattle_checkouts <- open_dataset(
+  sources = "data/seattle-library/seattle-library-checkouts.csv",
+  format = "csv"
+)
+```
+
+## Load [any]{.focus} tabular text data into Arrow
+
+```{r}
+seattle_checkouts <- open_dataset(
+  sources = "data/seattle-library/seattle-library-checkouts.csv",
+  format = "text",
+  delimiter = ","
+)
+```
+
+## Arrow [Dataset]{.focus}
+
+
+:::: {.columns}
+::: {.column width="50%"}
+```{r}
+seattle_checkouts
+```
+:::
+
+::: {.column width="50%"}
+:::{.fragment}
+An Arrow [Dataset]{.focus} is a representation of data stored on-disk in one or more files. 
+:::
+
+:::{.fragment}
+![](images/dataset.png)
+:::
+:::
+::::
+
+
+::: footer
+Arrow Dataset Illustration: <https://blog.djnavarro.net/posts/2022-11-30_unpacking-arrow-datasets/>
+:::
+
+## Arrow Dataset - Schema
+
+
+:::: {.columns}
+
+::: {.column width="40%"}
+```{r}
+schema(seattle_checkouts)
+```
+
+:::
+
+::: {.column width="60%"}
+::: incremental
+- Be careful - schema is estimated from the first 1 MB of data.
+- The diversity of data types is greater than R
+    - R: Whole numbers represented with type `integer`
+    - Arrow: Whole numbers can be represented by `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64`
+    
+:::
+:::
+
+::::
+
+## `{arrow}` + `{dplyr}`
+
+:::: {.columns}
+
+::: {.column width="45%"}
+
+We can use familiar `dplyr` verbs when working with an Arrow Dataset. 
+
+::: incremental
+- `group_by()`: Group by checkout year
+- `summarize()`: Sum checkout count, by year
+- `arrange()`: Sort checkouts by year in descending order 
+:::
+:::
+
+::: {.column width="55%"}
+
+```{r}
+seattle_checkouts |> 
+  group_by(CheckoutYear) |> 
+  summarize(Checkouts = sum(Checkouts)) |> 
+  arrange(desc(CheckoutYear)) 
+```
+:::
+
+::::
+
+## `{arrow}` + `{dplyr}`
+
+:::: {.columns}
+
+::: {.column width="45%"}
+
+We can use familiar `dplyr` verbs when working with an Arrow Dataset. 
+
+- `group_by()`: Group by checkout year
+- `summarize()`: Sum checkout count, by year
+- `arrange()`: Sort checkouts by year in descending order 
+:::
+
+::: {.column width="55%"}
+
+```{r}
+seattle_checkouts |> 
+  group_by(CheckoutYear) |> 
+  summarize(Checkouts = sum(Checkouts)) |> 
+  arrange(desc(CheckoutYear)) 
+```
+:::
+
+::::
+
+## `{arrow}` + `{dplyr}`
+
+:::: {.columns}
+
+::: {.column width="45%"}
+
+We can use familiar `dplyr` verbs when working with an Arrow Dataset. 
+
+- `group_by()`: Group by checkout year
+- `summarize()`: Sum checkout count, by year
+- `arrange()`: Sort checkouts by year in descending order 
+:::
+
+::: {.column width="55%"}
+
+```{r}
+seattle_checkouts |> 
+  group_by(CheckoutYear) |> 
+  summarize(Checkouts = sum(Checkouts)) |> 
+  arrange(desc(CheckoutYear)) |> 
+  class()
+```
+:::
+
+::::
+
+## Bring results into memory
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+`collect()` will bring the results of the Arrow query into memory as a `tibble`.
+
+:::
+
+::: {.column width="50%"}
+
+```{r}
+#| code-line-numbers: "5|1-5"
+seattle_checkouts |> 
+  group_by(CheckoutYear) |> 
+  summarize(Checkouts = sum(Checkouts)) |> 
+  arrange(desc(CheckoutYear)) |> 
+  collect()
+```
+:::
+
+::::
+
+## Bring results into memory
+
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+`compute()` will bring the results of the Arrow query into memory as an `Arrow Table`.
+
+:::
+
+::: {.column width="50%"}
+
+```{r}
+#| code-line-numbers: "5|1-5"
+seattle_checkouts |> 
+  group_by(CheckoutYear) |> 
+  summarize(Checkouts = sum(Checkouts)) |> 
+  arrange(desc(CheckoutYear)) |> 
+  compute()
+```
+:::
+
+::::
+
+## Tibbles and Tables and Datasets - oh my!
+
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+`Tibble`:
+
+::: incremental
+- Stored in R’s memory as a standard data frame.
+- Slower for large datasets due to R’s in-memory data handling.
+- Fully compatible with tidyverse functions and interactive data manipulation.
+- Limited by available memory; not ideal for very large datasets.
+::: 
+
+:::
+
+::: {.column width="50%"}
+
+`Arrow Tables`:
+
+::: incremental
+- Stored in Arrow’s columnar memory format for efficient processing.
+- Optimized for big data; supports zero-copy reads and fast operations.
+- Easily integrates with Parquet, Feather, and other big data formats for cross-platform use.
+:::
+:::
+
+::::
+
+
+. . . 
+
+
+## Performance
+
+
+:::: {.columns}
+
+::: {.column width="40%"}
+
+> How long does it take to calculate the number of books checked out from 2019 to 2021?
+:::
+
+::: {.column width="60%"}
+
+```{r}
+#| code-line-numbers: "1-2,10|3-9"
+library(tictoc)
+tic()
+checkout_count <- seattle_checkouts |>
+  group_by(CheckoutYear) |>
+  filter(CheckoutYear %in% c(2019, 2020, 2021)
+         & MaterialType == "BOOK") |>
+  summarize(Checkouts = sum(Checkouts)) |>
+  arrange(desc(CheckoutYear)) |>
+  collect()
+toc()
+```
+:::
+
+::::
+
+
+## Improving performance with Arrow [Parquet]{.focus} 
+
+
+Write the Seattle checkouts data to Parquet, partitioned by `CheckoutYear`:
+
+```{r}
+#| eval: false
+seattle_parquet_path <- "data/seattle-library-parquet"
+
+seattle_checkouts |>
+  group_by(CheckoutYear) |>
+  write_dataset(path = seattle_parquet_path,
+                format = "parquet")
+```
+
+## Arrow [Parquet]{.focus} structure
+
+:::: {.columns}
+::: {.column width="40%"}
+
+::: incremental
+- 21 folders (to 2005 to 2025)
+- Each folder has 1 individual file per year
+- 21 files, 5 GB in total
+- Each file roughly 250 MB
+- Rule of thumb: *Parquet row blocks should be between 250 MB to 1 GB*
+:::
+:::
+
+::: {.column width="60%"}
+```{r}
+fs::dir_tree("data/seattle-library-parquet/")
+```
+:::
+::::
+
+## Arrow [Parquet]{.focus} performance
+
+```{r}
+seattle_checkouts_part <- arrow::open_dataset("data/seattle-library-parquet/",
+                                              format = "parquet")
+```
+
+## Arrow [Parquet]{.focus} performance
+
+```{r}
+#| eval: false
+tic()
+checkout_count <- seattle_checkouts_part |> 
+  group_by(CheckoutYear) |> 
+  filter(CheckoutYear %in% c(2019, 2020, 2021)
+         & MaterialType == "BOOK") |> 
+  summarize(Checkouts = sum(Checkouts)) |> 
+  arrange(desc(CheckoutYear)) |> 
+  collect()
+toc()
+```
+
+## Apache [Parquet]{.focus}
+
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+![](images/parquet-format.png){width=70%}
+:::
+
+::: {.column width="50%"}
+
+::: incremental
+- On-disk archival big data storage
+- By accessing only the necessary columns, Parquet significantly speeds up data analysis queries
+- Efficient compression techniques minimize the storage footprint of large datasets
+- Widely used with modern big data processing frameworks
+:::
+:::
+
+::::
+::: footer
+Parquet Illustration by VuTrinh: <https://vutr.substack.com/p/the-overview-of-parquet-file-format>
+:::
+## Arrow [Parquet]{.focus} performance 
+
+![](images/row-group.png)
+
+
+## Arrow [Parquet]{.focus} performance
+
+![](images/maine-coon.png)
+
+
+## Even [bigger]{.focus} data
+
+::::::: columns
+:::: {.column width="50%"}
+::: incremental
+-   NYC Taxi and Limousine Commission (TLC) Data
+-   Common demonstration dataset for working with big data
+-   37 GB PARQUET format
+:::
+::::
+
+:::: {.column width="50%"}
+![](images/nyc-taxi-homepage)
+
+::: {style="font-size: 50%;"}
+<https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page>
+:::
+::::
+:::::::
+
+## Load NYC Taxi Data
+
+```{r}
+nyc_taxi <- open_dataset(
+  "data/nyc-taxi",
+  format = "parquet"
+)
+
+nyc_taxi
+```
+
+## `dplyr` query
+
+> Calculate the percent of rides that are shared by year
+ 
+. . . 
+
+```{r}
+library(dplyr)
+
+nyc_taxi |>                                                        
+  group_by(year) |> 
+  summarize(
+    total_rides = n(), 
+    shared_rides = sum(passenger_count > 1,
+                       na.rm = TRUE)
+    ) |> 
+  mutate(percent_shared = (shared_rides / total_rides) * 100)
+```
+
+## `dplyr` query
+
+```{r}
+library(tictoc)
+tic()
+shared_rides <- nyc_taxi |> 
+  group_by(year) |> 
+  summarize(total_rides = n(), 
+            shared_rides = sum(passenger_count > 1,
+                               na.rm = TRUE)) |> 
+  mutate(percent_shared = (shared_rides / total_rides) * 100) |> 
+  collect()
+toc()
+```
+
+> 9.464 sec elapsed.
+
+. . .
+
+Remember, this is over [one billion]{.focus} rows of data
+
+. . .
+
+over [40 GB]{.focus} in size, running on a laptop with only [16 GB]{.focus} of memory
+
+. . .
+
+
+::: {style="font-size: 200%;"}
+
+:exploding_head:
+
+:::
+
+## Workflow for working with Arrow Dataset (larger-than-memory)
+
+. . .
+
+Use `nrow()` to understand how many rows would be returned to a `tibble` by `collect()`
+
+. . . 
+
+```{r}
+nyc_taxi |> 
+  filter(year == 2020) |> 
+  nrow()
+```
+
+
+## Workflow for working with Arrow Dataset (larger-than-memory)
+
+Use `head()` to preview the returned query without collecting all of the results into memory
+
+. . . 
+
+> Find the largest tippers for 2020
+
+. . . 
+
+```{r}
+nyc_taxi |>
+  filter(year == 2020) |> 
+  mutate(tip_ratio = (tip_amount/fare_amount)*100) |> 
+  select(fare_amount, tip_amount, tip_ratio) |> 
+  arrange(desc(tip_ratio))
+```
+
+
+## Workflow for working with Arrow Dataset (larger-than-memory)
+
+Use `head()` to preview the returned query without collecting all of the results into memory
+
+
+> Find the largest tippers for 2020
+
+
+```{r}
+nyc_taxi |>
+  filter(year == 2020) |> 
+  mutate(tip_ratio = (tip_amount/fare_amount)*100) |> 
+  select(fare_amount, tip_amount, tip_ratio) |> 
+  arrange(desc(tip_ratio)) |> 
+  head() |> 
+  collect()
+```
+
+## Workflow for working with Arrow Dataset (larger-than-memory)
+
+
+`nrow()`: Understand how many rows would be returned to a `tibble` by `collect()`
+
+. . .
+
+`head()`: Preview the returned query without collecting all of the results into memory|
+
+## Limitations - not all functions are available in Arrow 
+
+
+```{r}
+#| error: true
+library(tidyr)
+
+nyc_taxi |> 
+  group_by(vendor_name) |>
+  summarise(max_fare = max(fare_amount)) |>
+  pivot_longer(!vendor_name, names_to = "metric") |> 
+  collect()
+```
+
+
+## Enter `DuckDB`!
+
+
+:::: {.columns}
+
+::: {.column width="50%"}
+::: incremental
+- DuckDB is a fast database system
+- DuckDB has no dependencies. Simply `install.packages("duckdb")`
+- Arrow allows seamless translation from DuckDB to Arrow queries 
+:::
+:::
+
+::: {.column width="50%"}
+![](images/duckdb.png)
+:::
+
+::::
+
+## Pivot with DuckDB 
+
+```{r}
+library(duckdb)
+library(tidyr)
+
+nyc_taxi |> 
+  group_by(vendor_name) |>
+  summarise(max_fare = max(fare_amount)) |>
+  to_duckdb() |> # send data to duckdb
+  pivot_longer(!vendor_name, names_to = "metric") |> 
+  to_arrow() |> # return data back to arrow
+  collect()
+```
+
+## Resources
+
+> This session was inspired by, and borrowed partly from: 
+
+Big Data in R with Arrow - Posit::Conf(2024) Workshop
+- <https://posit-conf-2024.github.io/arrow/>
+
+Using the {arrow} and {duckdb} packages to wrangle medical datasets that are Larger than RAM - R/Medicine Conference 2022 (Peter D.R. Higgins)
+- <https://www.youtube.com/watch?v=Yxeic7WXzFw>
+
+Doing More with Data: An Introduction to Arrow for R Users (Danielle Navarro)
+- <https://www.youtube.com/watch?v=O42LUmJZPx0&t=15s>
