@@ -527,7 +527,6 @@ seattle_checkouts_part <- arrow::open_dataset("data/seattle-library-parquet/",
 ## Arrow [Parquet]{.focus} performance
 
 ```{r}
-#| eval: false
 tic()
 checkout_count <- seattle_checkouts_part |> 
   group_by(CheckoutYear) |> 
@@ -637,8 +636,6 @@ shared_rides <- nyc_taxi |>
   collect()
 toc()
 ```
-
-> 9.464 sec elapsed.
 
 . . .
 
